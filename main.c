@@ -315,44 +315,60 @@ int connect_device_read_info(bool read_info) {
         return 0;
     }
 
-    if(send_recovery_commands("getdevice:", codename)) {
-        printf("Failed to execute getdevice");
-        return 1;
+    if (codename != NULL) {
+        if(send_recovery_commands("getdevice:", codename)) {
+            printf("Failed to execute getdevice");
+            return 1;
+        }
     }
 
-    if(send_recovery_commands("getversion:", version)) {
-        printf("Failed to execute getdevice");
-        return 1;
+    if (version != NULL) {
+        if(send_recovery_commands("getversion:", version)) {
+            printf("Failed to execute getdevice");
+            return 1;
+        }
     }
 
-    if(send_recovery_commands("getsn:", serial_num)) {
-        printf("Failed to execute getdevice");
-        return 1;
+    if (serial_num != NULL) {
+        if(send_recovery_commands("getsn:", serial_num)) {
+            printf("Failed to execute getdevice");
+            return 1;
+        }
     }
 
-    if(send_recovery_commands("getcodebase:", codebase)) {
-        printf("Failed to execute getdevice");
-        return 1;
+    if (codebase != NULL) {
+        if(send_recovery_commands("getcodebase:", codebase)) {
+            printf("Failed to execute getdevice");
+            return 1;
+        }
     }
 
-    if(send_recovery_commands("getbranch:", branch)) {
-        printf("Failed to execute getdevice");
-        return 1;
+    if (branch != NULL) {
+        if(send_recovery_commands("getbranch:", branch)) {
+            printf("Failed to execute getdevice");
+            return 1;
+        }
     }
 
-    if(send_recovery_commands("getlanguage:", lang)) {
-        printf("Failed to execute getdevice");
-        return 1;
+    if (lang != NULL) {
+        if(send_recovery_commands("getlanguage:", lang)) {
+            printf("Failed to execute getdevice");
+            return 1;
+        }
     }
 
-    if(send_recovery_commands("getregion:", region)) {
-        printf("Failed to execute getdevice");
-        return 1;
+    if (region != NULL) {
+        if(send_recovery_commands("getregion:", region)) {
+            printf("Failed to execute getdevice");
+            return 1;
+        }
     }
 
-    if(send_recovery_commands("getromzone:", romzone)) {
-        printf("Failed to execute getdevice");
-        return 1;
+    if (romzone != NULL) {
+        if(send_recovery_commands("getromzone:", romzone)) {
+            printf("Failed to execute getdevice");
+            return 1;
+        }
     }
 
     return 0;
@@ -504,6 +520,15 @@ int start_sideload(const char *sideload_file) {
 }
 
 int main(int argc, char** argv) {
+    codename = NULL;
+    version = NULL;
+    serial_num = NULL;
+    codebase = NULL;
+    branch = NULL;
+    lang = NULL;
+    region = NULL;
+    romzone = NULL;
+
     int opt;
     bool format_data = false;
     bool generate_sign = false;
