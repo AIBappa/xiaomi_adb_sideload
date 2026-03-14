@@ -318,7 +318,7 @@ int connect_device_read_info(bool read_info) {
         return 0;
     }
 
-    /*if (codename != NULL) {
+    if (codename != NULL) {
         if(send_recovery_commands("getdevice:", codename, 64)) {
             printf("Failed to execute getdevice");
             return 1;
@@ -372,7 +372,7 @@ int connect_device_read_info(bool read_info) {
             printf("Failed to execute getdevice");
             return 1;
         }
-    }*/
+    }
 
     return 0;
 }
@@ -572,8 +572,8 @@ int start_sideload(const char *sideload_file) {
             printf("%s", dummy_data);
             break;
         }
-        long block = strtol(dummy_data, NULL, 10);
-        long offset = block * ADB_SIDELOAD_CHUNK_SIZE;
+        long long block = strtoll(dummy_data, NULL, 10);
+        long long offset = block * ADB_SIDELOAD_CHUNK_SIZE;
 
         if (offset > file_size) break;
         int to_write = ADB_SIDELOAD_CHUNK_SIZE;
@@ -712,14 +712,14 @@ int main(int argc, char** argv) {
         send_recovery_commands("reboot:", buf, sizeof(buf));
     }
 
-    /*free(codename);
+    free(codename);
     free(version);
     free(serial_num);
     free(codebase);
     free(branch);
     free(lang);
     free(region);
-    free(romzone);*/
+    free(romzone);
     
     if (dev_handle != NULL) {
         libusb_release_interface(dev_handle, interface_num);
