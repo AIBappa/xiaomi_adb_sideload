@@ -507,7 +507,7 @@ int start_sideload(const char *sideload_file) {
         send_command(ADB_OKAY, pkt.arg1, pkt.arg0, NULL, 0);
 
 
-        percentage = (long)(offset * 100) / file_size;
+        percentage = (offset * 100) / file_size;
         if(percentage != old_percentage) {
             printf("%ld%%\n", percentage);
             old_percentage = percentage;
