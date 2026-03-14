@@ -4,7 +4,7 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <libusb.h>
-#include <curl/curl.h>
+//#include <curl/curl.h>
 #include <AES/aes.h>
 #include <JSON/tiny-json.h>
 #include <BASE64/base64.h>
