@@ -514,16 +514,27 @@ int generate_firmware_sign(char* signfile) {
     long status_code;
     curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &status_code);
     if (status_code == 200) {
-        curl_free(json_post_data);
-        json_post_data = NULL;
+        if (json_post_data != NULL) curl_free(json_post_data);
         json_post_data = curl_easy_unescape(curl, req.buffer, req.len, &len);
         
-        memset(post_buf, 0, max_decode_len + 256);
-        b64_len = b64_decode((uint8_t *)json_post_data, len,(uint8_t*)post_buf);
-        if (b64_len > max_decode_len) {
-            printf("Base64 decode output exceeds buffer\n");
+        // Calculate the exact size needed for the massive server response
+        size_t actual_decode_len = (len * 3) / 4 + 1024;
+        
+        // Free the old request buffer and allocate the new response buffer
+        if (post_buf != NULL) free(post_buf);
+        post_buf = malloc(actual_decode_len);
+        if (!post_buf) {
+            printf("Memory allocation failed for server response\n");
             goto out;
         }
+        memset(post_buf, 0, actual_decode_len);
+        
+        b64_len = b64_decode((uint8_t *)json_post_data, len, (uint8_t*)post_buf);
+        if (b64_len > actual_decode_len) {
+            printf("Base64 decode output exceeds actual buffer\n");
+            goto out;
+        }
+        
         AES_init_ctx_iv(&ctx, key, iv);
         AES_CBC_decrypt_buffer(&ctx, (uint8_t *)post_buf, b64_len);
 
