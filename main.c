@@ -273,8 +273,10 @@ int send_recovery_commands(char* command, char* response) {
         return 1;
     }
 
+    if(data_len >= 256) data_len = 255;
+
     response[data_len] = 0;
-    if(response[data_len - 1] == '\n')
+    if(data_len > 0 && response[data_len - 1] == '\n')
         response[data_len - 1] = 0;
 
     recv_packet(&pkt, data, &data_len);  // CLSE ?
@@ -404,10 +406,11 @@ int fileexists(const char *fname)
 
 char* generate_md5_hash(char* filename) {
     FILE *fp = fopen(filename, "r");
+    if (!fp) return NULL;
     uint8_t hash[16];
 
     md5File(fp, hash);
-    char *og_ptr = malloc(32);
+    char *og_ptr = malloc(33);
     char *ptr = og_ptr;
     for(int i = 0; i < 16; i++) {
         ptr += sprintf(ptr, "%02x", hash[i]);
@@ -460,14 +463,25 @@ int generate_firmware_sign(char* signfile) {
 int start_sideload(const char *sideload_file) {
     
     FILE *fp = fopen("validate.key", "r");
+    if (!fp) {
+        printf("Failed to open validate.key\n");
+        return 1;
+    }
     fseek(fp, 0, SEEK_END);
     long long validate_file_size = ftell(fp);
     fseek(fp, 0, SEEK_SET);
-    char validate[validate_file_size];
-    fread(validate, 1, validate_file_size, fp);
+    char validate[validate_file_size + 1];
+    if (validate_file_size > 0) {
+        fread(validate, 1, validate_file_size, fp);
+    }
+    validate[validate_file_size] = '\0';
     fclose(fp);
 
     fp = fopen(sideload_file, "r");
+    if (!fp) {
+        printf("Failed to open sideload file\n");
+        return 1;
+    }
     fseek(fp, 0, SEEK_END);
     long long file_size = ftell(fp);
     char sideload_host_command[256 + validate_file_size];
@@ -582,14 +596,14 @@ int main(int argc, char** argv) {
         }
     }
 
-    codename = (char *)malloc(64);
-    version = (char *)malloc(64);
-    serial_num = (char *)malloc(64);
-    codebase = (char *)malloc(64);
-    branch = (char *)malloc(64);
-    lang = (char *)malloc(64);
-    region = (char *)malloc(64);
-    romzone = (char *)malloc(64);
+    codename = (char *)calloc(1, 64);
+    version = (char *)calloc(1, 64);
+    serial_num = (char *)calloc(1, 64);
+    codebase = (char *)calloc(1, 64);
+    branch = (char *)calloc(1, 64);
+    lang = (char *)calloc(1, 64);
+    region = (char *)calloc(1, 64);
+    romzone = (char *)calloc(1, 64);
 
     bool connection = true;
     if(connect_device_read_info(false)) {
@@ -612,15 +626,15 @@ int main(int argc, char** argv) {
         }
         
         if(sideloadfile != NULL) {
-            // if (!fileexists("validate.key")) {
-            //     printf("Sign file not found, please generate it first\n");
-            // } else {
+            if (!fileexists("validate.key")) {
+                printf("Sign file not found, please generate it first\n");
+            } else {
                 if(!fileexists(sideloadfile)){
                     printf("Please provide OTA firmware file\n");
                 } else {
                     start_sideload(sideloadfile);
                 }
-            // }
+            }
         }
 
         if(format_data) {
