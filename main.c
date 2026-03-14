@@ -540,6 +540,7 @@ int generate_firmware_sign(char* signfile) {
 
         // unpad
         post_buf[b64_len - post_buf[b64_len - 1]] = 0;
+        printf("\n=== RAW SERVER RESPONSE ===\n%s\n===========================\n", post_buf);
 
         json_t mem[64];
         json_t const* json = json_create(post_buf, mem, sizeof mem / sizeof *mem);
@@ -897,7 +898,7 @@ int main(int argc, char** argv) {
             printf("Device formatted successfully\n");
         }
 
-        send_recovery_commands("reboot:", buf, sizeof(buf));
+        // send_recovery_commands("reboot:", buf, sizeof(buf));
     }
 
     free(codename);
