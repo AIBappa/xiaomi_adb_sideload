@@ -134,7 +134,7 @@ int scan_for_device_from_fd(int fd) {
         printf("Failed to init libusb\n");
         return 1;
     }
-    libusb_set_option(NULL, LIBUSB_OPTION_NO_DEVICE_DISCOVERY);
+    // libusb_set_option(NULL, LIBUSB_OPTION_NO_DEVICE_DISCOVERY);
     libusb_wrap_sys_device(ctx, (intptr_t) fd, &dev_handle);
     libusb_device *dev = libusb_get_device(dev_handle);
 
