@@ -461,7 +461,7 @@ int start_sideload(const char *sideload_file) {
     
     FILE *fp = fopen("validate.key", "r");
     fseek(fp, 0, SEEK_END);
-    long validate_file_size = ftell(fp);
+    long long validate_file_size = ftell(fp);
     fseek(fp, 0, SEEK_SET);
     char validate[validate_file_size];
     fread(validate, 1, validate_file_size, fp);
@@ -469,10 +469,10 @@ int start_sideload(const char *sideload_file) {
 
     fp = fopen(sideload_file, "r");
     fseek(fp, 0, SEEK_END);
-    long file_size = ftell(fp);
-    char sideload_host_command[128 + validate_file_size];
-    memset(sideload_host_command, 0, 128 + validate_file_size);
-    sprintf(sideload_host_command, "sideload-host:%ld:%d:%s:0", file_size, ADB_SIDELOAD_CHUNK_SIZE, validate);
+    long long file_size = ftell(fp);
+    char sideload_host_command[256 + validate_file_size];
+    memset(sideload_host_command, 0, 256 + validate_file_size);
+    sprintf(sideload_host_command, "sideload-host:%lld:%d:%s:0", file_size, ADB_SIDELOAD_CHUNK_SIZE, validate);
     send_command(ADB_OPEN, 1, 0, sideload_host_command, strlen(sideload_host_command) + 1);
 
     uint8_t *work_buffer = malloc(ADB_SIDELOAD_CHUNK_SIZE);

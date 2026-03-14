@@ -1,6 +1,6 @@
 OUT := xiaomi_adb
 
-CFLAGS := -O2 -Wall -g -I./lib `pkg-config --cflags libusb-1.0`
+CFLAGS := -O2 -Wall -g -D_FILE_OFFSET_BITS=64 -I./lib `pkg-config --cflags libusb-1.0`
 LDFLAGS := `pkg-config --libs libusb-1.0`
 prefix := /usr/local
 
