@@ -612,14 +612,14 @@ int main(int argc, char** argv) {
         send_recovery_commands("reboot:", buf);
     }
 
-    free(codename);
+    /*free(codename);
     free(version);
     free(serial_num);
     free(codebase);
     free(branch);
     free(lang);
     free(region);
-    free(romzone);
+    free(romzone);*/
     
     if (dev_handle != NULL) {
         libusb_release_interface(dev_handle, interface_num);
