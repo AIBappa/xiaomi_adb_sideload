@@ -1,3 +1,4 @@
+#define _FILE_OFFSET_BITS 64
 #include <stdio.h>
 #include <string.h>
 #include <getopt.h>
@@ -242,7 +243,7 @@ int recv_packet(adb_usb_packet *pkt, void* data, int *data_len, int max_data_len
     }
 
     if(pkt->len > 0) {
-        if (pkt->len > max_data_len) {
+        if (pkt->len > (uint32_t)max_data_len) {
             printf("Data length exceeds buffer capacity\n");
             return 1;
         }
@@ -414,10 +415,18 @@ char* generate_md5_hash(char* filename) {
     uint8_t hash[16];
 
     md5File(fp, hash);
+    fclose(fp);
     char *og_ptr = malloc(33);
+    if (!og_ptr) return NULL;
+    memset(og_ptr, 0, 33);
     char *ptr = og_ptr;
     for(int i = 0; i < 16; i++) {
-        ptr += sprintf(ptr, "%02x", hash[i]);
+        int bytes_written = snprintf(ptr, 33 - (ptr - og_ptr), "%02x", hash[i]);
+        if (bytes_written < 0 || bytes_written >= 33 - (int)(ptr - og_ptr)) {
+            free(og_ptr);
+            return NULL;
+        }
+        ptr += bytes_written;
     }
     return og_ptr;
 }
@@ -426,20 +435,32 @@ int generate_firmware_sign(char* signfile) {
     const uint8_t key[16] = { 0x6D, 0x69, 0x75, 0x69, 0x6F, 0x74, 0x61, 0x76, 0x61, 0x6C, 0x69, 0x64, 0x65, 0x64, 0x31, 0x31};
     const uint8_t iv[16] = { 0x30, 0x31, 0x30, 0x32, 0x30, 0x33, 0x30, 0x34, 0x30, 0x35, 0x30, 0x36, 0x30, 0x37, 0x30, 0x38};
 
-    char json_request[1024];
-
     char* pkg_hash = generate_md5_hash(signfile);
-    memset(json_request, 0, 1024);
-    sprintf(json_request, "{\n\t\"d\" : \"%s\",\n\t\"v\" : \"%s\",\n\t\"c\" : \"%s\",\n\t\"b\" : \"%s\",\n\t\"sn\" : \"%s\",\n\t\"r\" : \"GL\",\n\t\"l\" : \"en-US\",\n\t\"f\" : \"1\",\n\t\"id\" : \"\",\n\t\"options\" : {\n\t\t\"zone\" : %s\n\t},\n\t\"pkg\" : \"%s\"\n}", codename, version, codebase, branch, serial_num, romzone, pkg_hash);
+    if (!pkg_hash) {
+        printf("Error: Hash generation failed\n");
+        return 1;
+    }
+
+    char json_request[2048];
+    memset(json_request, 0, sizeof(json_request));
+    int len = snprintf(json_request, sizeof(json_request), "{\n\t\"d\" : \"%s\",\n\t\"v\" : \"%s\",\n\t\"c\" : \"%s\",\n\t\"b\" : \"%s\",\n\t\"sn\" : \"%s\",\n\t\"r\" : \"GL\",\n\t\"l\" : \"en-US\",\n\t\"f\" : \"1\",\n\t\"id\" : \"\",\n\t\"options\" : {\n\t\t\"zone\" : %s\n\t},\n\t\"pkg\" : \"%s\"\n}", codename, version, codebase, branch, serial_num, romzone, pkg_hash);
     free(pkg_hash);
 
-    int len = strlen(json_request);
+    if (len < 0 || len >= (int)sizeof(json_request)) {
+        printf("JSON buffer overflow detected\n");
+        return 1;
+    }
+
+    len = strlen(json_request);
     int mod_len = 16 - (len % 16);
-    if (mod_len > 0) {
+    if (mod_len > 0 && len + mod_len < (int)sizeof(json_request)) {
         for(int i = 0; i < mod_len; i++) 
             json_request[len + i] = (char)mod_len;
         
         len = len + mod_len;
+    } else if (len + mod_len >= (int)sizeof(json_request)) {
+        printf("Buffer overflow in PKCS7 padding\n");
+        return 1;
     }
 
     struct AES_ctx ctx;
@@ -460,9 +481,16 @@ int generate_firmware_sign(char* signfile) {
     headers = curl_slist_append(headers, "Accept-Encoding: identity");
     headers = curl_slist_append(headers, "Content-Type: application/x-www-form-urlencoded");
 
-    char *post_buf = malloc(4096);
+    size_t max_decode_len = (strlen(out_buf) * 3) / 4 + 1 + 16;
+    char *post_buf = malloc(max_decode_len + 256);
+    if (!post_buf) {
+        printf("Memory allocation failed\n");
+        curl_easy_cleanup(curl);
+        curl_slist_free_all(headers);
+        return 1;
+    }
     char *json_post_data = curl_easy_escape(curl, out_buf, strlen(out_buf));
-    sprintf(post_buf, "q=%s&t=&s=1", json_post_data);
+    snprintf(post_buf, max_decode_len + 256, "q=%s&t=&s=1", json_post_data);
     get_request req = {.buffer = NULL, .len = 0, .buflen = 0};
 
     curl_easy_setopt(curl, CURLOPT_URL, "http://update.miui.com/updates/miotaV3.php");
@@ -472,6 +500,10 @@ int generate_firmware_sign(char* signfile) {
     curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
 
     req.buffer = malloc(CHUNK_SIZE);
+    if (!req.buffer) {
+        printf("Memory allocation failed for request buffer\n");
+        goto out;
+    }
     req.buflen = CHUNK_SIZE;
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&req);
@@ -483,10 +515,15 @@ int generate_firmware_sign(char* signfile) {
     curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &status_code);
     if (status_code == 200) {
         curl_free(json_post_data);
+        json_post_data = NULL;
         json_post_data = curl_easy_unescape(curl, req.buffer, req.len, &len);
         
-        memset(post_buf, 0, 4096);
+        memset(post_buf, 0, max_decode_len + 256);
         b64_len = b64_decode((uint8_t *)json_post_data, len,(uint8_t*)post_buf);
+        if (b64_len > max_decode_len) {
+            printf("Base64 decode output exceeds buffer\n");
+            goto out;
+        }
         AES_init_ctx_iv(&ctx, key, iv);
         AES_CBC_decrypt_buffer(&ctx, (uint8_t *)post_buf, b64_len);
 
@@ -515,16 +552,34 @@ int generate_firmware_sign(char* signfile) {
         printf("Sign generated successfully\n");
         printf("SERVER TOKEN RECEIVED: %s\n", validate);
         FILE* fp = fopen("validate.key", "w");
-        fwrite(validate, 1, strlen(validate), fp);
-        fclose(fp);
-        printf("Validation file save to : validate.key\n");
+        if (!fp) {
+            printf("Failed to open validate.key for writing\n");
+            result = 1;
+        } else {
+            size_t bytes_written = fwrite(validate, 1, strlen(validate), fp);
+            if (bytes_written != strlen(validate)) {
+                printf("Failed to write validate.key completely\n");
+                result = 1;
+            }
+            fclose(fp);
+            printf("Validation file save to : validate.key\n");
+        }
     }
 out:
-    curl_free(json_post_data);
-    free(post_buf);
+    if (json_post_data != NULL) {
+        curl_free(json_post_data);
+        json_post_data = NULL;
+    }
+    if (post_buf != NULL) {
+        free(post_buf);
+        post_buf = NULL;
+    }
+    if (req.buffer != NULL) {
+        free(req.buffer);
+        req.buffer = NULL;
+    }
     curl_easy_cleanup(curl);
     curl_slist_free_all(headers);
-    free(req.buffer);
     return result;
 }
 
@@ -536,7 +591,12 @@ int start_sideload(const char *sideload_file) {
         return 1;
     }
     fseek(fp, 0, SEEK_END);
-    long long validate_file_size = ftell(fp);
+    long long validate_file_size = ftello(fp);
+    if (validate_file_size < 0) {
+        printf("ftello error\n");
+        fclose(fp);
+        return 1;
+    }
     fseek(fp, 0, SEEK_SET);
     
     if (validate_file_size > 4096) {
@@ -545,9 +605,20 @@ int start_sideload(const char *sideload_file) {
         return 1;
     }
     
-    char validate[validate_file_size + 1];
+    char *validate = malloc(validate_file_size + 1);
+    if (!validate) {
+        printf("Memory allocation failed\n");
+        fclose(fp);
+        return 1;
+    }
     if (validate_file_size > 0) {
-        fread(validate, 1, validate_file_size, fp);
+        size_t bytes_read = fread(validate, 1, validate_file_size, fp);
+        if (bytes_read != (size_t)validate_file_size) {
+            printf("Failed to read validate file\n");
+            free(validate);
+            fclose(fp);
+            return 1;
+        }
     }
     validate[validate_file_size] = '\0';
     fclose(fp);
@@ -555,10 +626,17 @@ int start_sideload(const char *sideload_file) {
     fp = fopen(sideload_file, "r");
     if (!fp) {
         printf("Failed to open sideload file\n");
+        free(validate);
         return 1;
     }
     fseek(fp, 0, SEEK_END);
-    long long file_size = ftell(fp);
+    long long file_size = ftello(fp);
+    if (file_size < 0) {
+        printf("ftello error\n");
+        fclose(fp);
+        free(validate);
+        return 1;
+    }
     
     char *sideload_host_command = malloc(256 + validate_file_size + 1);
     if (!sideload_host_command) {
@@ -570,8 +648,15 @@ int start_sideload(const char *sideload_file) {
     memset(sideload_host_command, 0, 256 + validate_file_size + 1);
     snprintf(sideload_host_command, 256 + validate_file_size, "sideload-host:%lld:%d:%s:0", file_size, ADB_SIDELOAD_CHUNK_SIZE, validate);
     send_command(ADB_OPEN, 1, 0, sideload_host_command, strlen(sideload_host_command) + 1);
+    free(validate);
 
     uint8_t *work_buffer = malloc(ADB_SIDELOAD_CHUNK_SIZE);
+    if (!work_buffer) {
+        printf("Memory allocation failed for work buffer\n");
+        free(sideload_host_command);
+        fclose(fp);
+        return 1;
+    }
     char dummy_data[64];
     int dummy_data_size = 0;
     adb_usb_packet pkt;
@@ -598,7 +683,14 @@ int start_sideload(const char *sideload_file) {
             to_write = file_size - offset;
         
         fseek(fp, offset, SEEK_SET);
-        fread(work_buffer, 1, to_write, fp);
+        size_t bytes_read = fread(work_buffer, 1, to_write, fp);
+        if (bytes_read != (size_t)to_write) {
+            printf("Failed to read sideload file completely\n");
+            free(work_buffer);
+            free(sideload_host_command);
+            fclose(fp);
+            return 1;
+        }
         send_command(ADB_WRTE, pkt.arg1, pkt.arg0, work_buffer, to_write);
         send_command(ADB_OKAY, pkt.arg1, pkt.arg0, NULL, 0);
 
@@ -614,7 +706,8 @@ int start_sideload(const char *sideload_file) {
     free(sideload_host_command);
     fclose(fp);
     return 0;
-}
+} 
+int main(int argc, char** argv);
 
 int main(int argc, char** argv) {
     codename = NULL;
@@ -667,7 +760,13 @@ int main(int argc, char** argv) {
     // quick hack to use TERMUX-USB 
     char *fd_s = getenv("TERMUX_USB_FD");
     if(fd_s != NULL) {
-        int fd = atoi(fd_s);
+        char *endptr;
+        long fd_long = strtol(fd_s, &endptr, 10);
+        if (*endptr != '\0' || fd_long < 0 || fd_long > INT_MAX) {
+            printf("Invalid TERMUX_USB_FD value\n");
+            return 1;
+        }
+        int fd = (int)fd_long;
         if(scan_for_device_from_fd(fd)) {
             printf("Incorrect device\n");
             return 1;
@@ -680,13 +779,73 @@ int main(int argc, char** argv) {
     }
 
     codename = (char *)calloc(1, 64);
+    if (!codename) {
+        printf("Memory allocation failed for codename\n");
+        return 1;
+    }
     version = (char *)calloc(1, 64);
+    if (!version) {
+        printf("Memory allocation failed for version\n");
+        free(codename);
+        return 1;
+    }
     serial_num = (char *)calloc(1, 64);
+    if (!serial_num) {
+        printf("Memory allocation failed for serial_num\n");
+        free(codename);
+        free(version);
+        return 1;
+    }
     codebase = (char *)calloc(1, 64);
+    if (!codebase) {
+        printf("Memory allocation failed for codebase\n");
+        free(codename);
+        free(version);
+        free(serial_num);
+        return 1;
+    }
     branch = (char *)calloc(1, 64);
+    if (!branch) {
+        printf("Memory allocation failed for branch\n");
+        free(codename);
+        free(version);
+        free(serial_num);
+        free(codebase);
+        return 1;
+    }
     lang = (char *)calloc(1, 64);
+    if (!lang) {
+        printf("Memory allocation failed for lang\n");
+        free(codename);
+        free(version);
+        free(serial_num);
+        free(codebase);
+        free(branch);
+        return 1;
+    }
     region = (char *)calloc(1, 64);
+    if (!region) {
+        printf("Memory allocation failed for region\n");
+        free(codename);
+        free(version);
+        free(serial_num);
+        free(codebase);
+        free(branch);
+        free(lang);
+        return 1;
+    }
     romzone = (char *)calloc(1, 64);
+    if (!romzone) {
+        printf("Memory allocation failed for romzone\n");
+        free(codename);
+        free(version);
+        free(serial_num);
+        free(codebase);
+        free(branch);
+        free(lang);
+        free(region);
+        return 1;
+    }
 
     bool connection = true;
     bool readinfo = (sideloadfile == NULL);
