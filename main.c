@@ -315,7 +315,7 @@ int connect_device_read_info(bool read_info) {
         return 0;
     }
 
-    if (codename != NULL) {
+    /*if (codename != NULL) {
         if(send_recovery_commands("getdevice:", codename)) {
             printf("Failed to execute getdevice");
             return 1;
@@ -369,7 +369,7 @@ int connect_device_read_info(bool read_info) {
             printf("Failed to execute getdevice");
             return 1;
         }
-    }
+    }*/
 
     return 0;
 }
@@ -477,7 +477,7 @@ int start_sideload(const char *sideload_file) {
 
     uint8_t *work_buffer = malloc(ADB_SIDELOAD_CHUNK_SIZE);
     char dummy_data[64];
-    int dummy_data_size;
+    int dummy_data_size = 0;
     adb_usb_packet pkt;
     long percentage = 0;
     long old_percentage = 0;
@@ -592,12 +592,7 @@ int main(int argc, char** argv) {
     romzone = (char *)malloc(64);
 
     bool connection = true;
-    bool readinfo = true;
-    if(sideloadfile != NULL) {
-        readinfo = false;
-    }
-
-    if(connect_device_read_info(readinfo)) {
+    if(connect_device_read_info(false)) {
         printf("Failed to connect with device\n");
         connection = false;
     }
