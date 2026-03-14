@@ -242,7 +242,10 @@ int recv_packet(adb_usb_packet *pkt, void* data, int *data_len, int max_data_len
     }
 
     if(pkt->len > 0) {
-        if (pkt->len > max_data_len) return 1;
+        if (pkt->len > max_data_len) {
+            printf("Data length exceeds buffer capacity\n");
+            return 1;
+        }
         if(!usb_read(data, pkt->len)) {
             return 1;
         }
@@ -254,10 +257,10 @@ int recv_packet(adb_usb_packet *pkt, void* data, int *data_len, int max_data_len
 
 int send_recovery_commands(char* command, char* response, int max_response_len) {
     int cmd_len = strlen(command);
-    char cmd[cmd_len + 1];
+    char cmd[cmd_len + 2];
     memcpy(cmd, command, cmd_len);
-    cmd_len++;
     cmd[cmd_len] = 0;
+    cmd_len++;
 
     if(send_command(ADB_OPEN, 1, 0, cmd, cmd_len)) {
         printf("device not accept connect request\n");
@@ -535,6 +538,13 @@ int start_sideload(const char *sideload_file) {
     fseek(fp, 0, SEEK_END);
     long long validate_file_size = ftell(fp);
     fseek(fp, 0, SEEK_SET);
+    
+    if (validate_file_size > 4096) {
+        printf("Validate file too large\n");
+        fclose(fp);
+        return 1;
+    }
+    
     char validate[validate_file_size + 1];
     if (validate_file_size > 0) {
         fread(validate, 1, validate_file_size, fp);
@@ -549,9 +559,16 @@ int start_sideload(const char *sideload_file) {
     }
     fseek(fp, 0, SEEK_END);
     long long file_size = ftell(fp);
-    char sideload_host_command[256 + validate_file_size];
-    memset(sideload_host_command, 0, 256 + validate_file_size);
-    sprintf(sideload_host_command, "sideload-host:%lld:%d:%s:0", file_size, ADB_SIDELOAD_CHUNK_SIZE, validate);
+    
+    char *sideload_host_command = malloc(256 + validate_file_size + 1);
+    if (!sideload_host_command) {
+        printf("Memory allocation failed\n");
+        fclose(fp);
+        return 1;
+    }
+    
+    memset(sideload_host_command, 0, 256 + validate_file_size + 1);
+    snprintf(sideload_host_command, 256 + validate_file_size, "sideload-host:%lld:%d:%s:0", file_size, ADB_SIDELOAD_CHUNK_SIZE, validate);
     send_command(ADB_OPEN, 1, 0, sideload_host_command, strlen(sideload_host_command) + 1);
 
     uint8_t *work_buffer = malloc(ADB_SIDELOAD_CHUNK_SIZE);
@@ -594,6 +611,7 @@ int start_sideload(const char *sideload_file) {
     }
     
     free(work_buffer);
+    free(sideload_host_command);
     fclose(fp);
     return 0;
 }
