@@ -446,6 +446,8 @@ int generate_firmware_sign(char* signfile) {
     int len = snprintf(json_request, sizeof(json_request), "{\n\t\"d\" : \"%s\",\n\t\"v\" : \"%s\",\n\t\"c\" : \"%s\",\n\t\"b\" : \"%s\",\n\t\"sn\" : \"%s\",\n\t\"r\" : \"%s\",\n\t\"l\" : \"%s\",\n\t\"f\" : \"1\",\n\t\"id\" : \"\",\n\t\"options\" : {\n\t\t\"zone\" : %s\n\t},\n\t\"pkg\" : \"%s\"\n}", codename, version, codebase, branch, serial_num, region, lang, romzone, pkg_hash);
     free(pkg_hash);
 
+    printf("\n=== REQUEST TO SERVER ===\n%s\n===========================\n", json_request);
+
     if (len < 0 || len >= (int)sizeof(json_request)) {
         printf("JSON buffer overflow detected\n");
         return 1;
