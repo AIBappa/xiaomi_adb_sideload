@@ -592,15 +592,15 @@ int main(int argc, char** argv) {
         }
         
         if(sideloadfile != NULL) {
-            if (!fileexists("validate.key")) {
-                printf("Sign file not found, please generate it first\n");
-            } else {
+            // if (!fileexists("validate.key")) {
+            //     printf("Sign file not found, please generate it first\n");
+            // } else {
                 if(!fileexists(sideloadfile)){
                     printf("Please provide OTA firmware file\n");
                 } else {
                     start_sideload(sideloadfile);
                 }
-            }
+            // }
         }
 
         if(format_data) {
