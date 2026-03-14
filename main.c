@@ -30,14 +30,14 @@ int bulk_in;
 int bulk_out;
 int interface_num;
 
-char* codename;
-char* version;
-char* serial_num;
-char* codebase;
-char* branch;
-char* lang;
-char* region;
-char* romzone;
+char* codename = NULL;
+char* version = NULL;
+char* serial_num = NULL;
+char* codebase = NULL;
+char* branch = NULL;
+char* lang = NULL;
+char* region = NULL;
+char* romzone = NULL;
 
 typedef struct {
     uint32_t cmd;
