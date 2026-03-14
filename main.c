@@ -468,8 +468,8 @@ int generate_firmware_sign(char* signfile) {
     AES_CBC_encrypt_buffer(&ctx, (uint8_t *)json_request, len);
 
     int b64_len = b64_encodedLength(len);
-    char out_buf[b64_len];
-    memset(out_buf, 0, b64_len);
+    char out_buf[b64_len + 1];
+    memset(out_buf, 0, b64_len + 1);
     b64_encode((uint8_t *)json_request, len, (uint8_t *)out_buf);
 
     curl_global_init(CURL_GLOBAL_ALL);
@@ -530,8 +530,8 @@ int generate_firmware_sign(char* signfile) {
         memset(post_buf, 0, actual_decode_len);
         
         b64_len = b64_decode((uint8_t *)json_post_data, len, (uint8_t*)post_buf);
-        if (b64_len > actual_decode_len) {
-            printf("Base64 decode output exceeds actual buffer\n");
+        if (b64_len <= 0 || b64_len > actual_decode_len) {
+            printf("Base64 decode failed or output exceeds actual buffer\n");
             goto out;
         }
         
@@ -868,8 +868,8 @@ int main(int argc, char** argv) {
 
     char buf[256];
     if (connection) {
-        //if(readinfo)
-            //printf("Codename: %s\nVersion: %s\nSerial: %s\nCodebase: %s\nBranch: %s\nLanguage: %s\nRegion: %s\nRomzone: %s\n", codename, version, serial_num, codebase, branch, lang, region, romzone);
+        if(readinfo)
+            printf("Codename: %s\nVersion: %s\nSerial: %s\nCodebase: %s\nBranch: %s\nLanguage: %s\nRegion: %s\nRomzone: %s\n", codename, version, serial_num, codebase, branch, lang, region, romzone);
         
         if(generate_sign){
             printf("%s", signfile);
