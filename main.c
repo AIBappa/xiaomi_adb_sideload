@@ -579,8 +579,8 @@ int main(int argc, char** argv) {
 
     char buf[256];
     if (connection) {
-        if(readinfo)
-            printf("Codename: %s\nVersion: %s\nSerial: %s\nCodebase: %s\nBranch: %s\nLanguage: %s\nRegion: %s\nRomzone: %s\n", codename, version, serial_num, codebase, branch, lang, region, romzone);
+        //if(readinfo)
+            //printf("Codename: %s\nVersion: %s\nSerial: %s\nCodebase: %s\nBranch: %s\nLanguage: %s\nRegion: %s\nRomzone: %s\n", codename, version, serial_num, codebase, branch, lang, region, romzone);
         
         if(generate_sign){
             printf("%s", signfile);
