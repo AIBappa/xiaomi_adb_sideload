@@ -236,12 +236,13 @@ int send_command(uint32_t cmd, uint32_t arg0, uint32_t arg1, void *data, int dat
     return 0;
 }
 
-int recv_packet(adb_usb_packet *pkt, void* data, int *data_len) {
+int recv_packet(adb_usb_packet *pkt, void* data, int *data_len, int max_data_len) {
     if(!usb_read(pkt, sizeof(adb_usb_packet))) {
         return 1;
     }
 
     if(pkt->len > 0) {
+        if (pkt->len > max_data_len) return 1;
         if(!usb_read(data, pkt->len)) {
             return 1;
         }
@@ -251,7 +252,7 @@ int recv_packet(adb_usb_packet *pkt, void* data, int *data_len) {
     return 0;
 }
 
-int send_recovery_commands(char* command, char* response) {
+int send_recovery_commands(char* command, char* response, int max_response_len) {
     int cmd_len = strlen(command);
     char cmd[cmd_len + 1];
     memcpy(cmd, command, cmd_len);
@@ -266,20 +267,20 @@ int send_recovery_commands(char* command, char* response) {
     adb_usb_packet pkt;
     char data[512];
     int data_len;
-    recv_packet(&pkt, data, &data_len); // this response OKAY
+    recv_packet(&pkt, data, &data_len, sizeof(data)); // this response OKAY
 
-    if(recv_packet(&pkt, response, &data_len)) {
+    if(recv_packet(&pkt, response, &data_len, max_response_len)) {
         printf("Failed to get info from device\n");
         return 1;
     }
 
-    if(data_len >= 256) data_len = 255;
+    if(data_len >= max_response_len) data_len = max_response_len - 1;
 
     response[data_len] = 0;
     if(data_len > 0 && response[data_len - 1] == '\n')
         response[data_len - 1] = 0;
 
-    recv_packet(&pkt, data, &data_len);  // CLSE ?
+    recv_packet(&pkt, data, &data_len, sizeof(data));  // CLSE ?
     return 0;
 
 }
@@ -295,7 +296,7 @@ int connect_device_read_info(bool read_info) {
     adb_usb_packet pkt;
     int try_count = 10;
     while (try_count > 0) {
-        if(recv_packet(&pkt, buf, &buf_len)) {
+        if(recv_packet(&pkt, buf, &buf_len, sizeof(buf))) {
             printf("Failed to read response from device\n");
             return 1;
         }
@@ -318,56 +319,56 @@ int connect_device_read_info(bool read_info) {
     }
 
     /*if (codename != NULL) {
-        if(send_recovery_commands("getdevice:", codename)) {
+        if(send_recovery_commands("getdevice:", codename, 64)) {
             printf("Failed to execute getdevice");
             return 1;
         }
     }
 
     if (version != NULL) {
-        if(send_recovery_commands("getversion:", version)) {
+        if(send_recovery_commands("getversion:", version, 64)) {
             printf("Failed to execute getdevice");
             return 1;
         }
     }
 
     if (serial_num != NULL) {
-        if(send_recovery_commands("getsn:", serial_num)) {
+        if(send_recovery_commands("getsn:", serial_num, 64)) {
             printf("Failed to execute getdevice");
             return 1;
         }
     }
 
     if (codebase != NULL) {
-        if(send_recovery_commands("getcodebase:", codebase)) {
+        if(send_recovery_commands("getcodebase:", codebase, 64)) {
             printf("Failed to execute getdevice");
             return 1;
         }
     }
 
     if (branch != NULL) {
-        if(send_recovery_commands("getbranch:", branch)) {
+        if(send_recovery_commands("getbranch:", branch, 64)) {
             printf("Failed to execute getdevice");
             return 1;
         }
     }
 
     if (lang != NULL) {
-        if(send_recovery_commands("getlanguage:", lang)) {
+        if(send_recovery_commands("getlanguage:", lang, 64)) {
             printf("Failed to execute getdevice");
             return 1;
         }
     }
 
     if (region != NULL) {
-        if(send_recovery_commands("getregion:", region)) {
+        if(send_recovery_commands("getregion:", region, 64)) {
             printf("Failed to execute getdevice");
             return 1;
         }
     }
 
     if (romzone != NULL) {
-        if(send_recovery_commands("getromzone:", romzone)) {
+        if(send_recovery_commands("getromzone:", romzone, 64)) {
             printf("Failed to execute getdevice");
             return 1;
         }
@@ -426,7 +427,7 @@ int generate_firmware_sign(char* signfile) {
 
     char* pkg_hash = generate_md5_hash(signfile);
     memset(json_request, 0, 1024);
-    sprintf(json_request, "{\n\t\"d\" : \"%s\",\n\t\"v\" : \"%s\",\n\t\"c\" : \"%s\",\n\t\"b\" : \"%s\",\n\t\"sn\" : \"%s\",\n\t\"r\" : \"GL\",\n\t\"l\" : \"en-US\",\n\t\"f\" : \"1\",\n\t\"id\" : \"\",\n\t\"options\" : {\n\t\t\"zone\" : %s\n\t},\n\t\"pkg\" : \"%s\"\n}", codename, version, codebase, branch, serial_num, romzone, pkg_hash);
+    snprintf(json_request, sizeof(json_request), "{\n\t\"d\" : \"%s\",\n\t\"v\" : \"%s\",\n\t\"c\" : \"%s\",\n\t\"b\" : \"%s\",\n\t\"sn\" : \"%s\",\n\t\"r\" : \"GL\",\n\t\"l\" : \"en-US\",\n\t\"f\" : \"1\",\n\t\"id\" : \"\",\n\t\"options\" : {\n\t\t\"zone\" : %s\n\t},\n\t\"pkg\" : \"%s\"\n}", codename, version, codebase, branch, serial_num, romzone, pkg_hash);
     free(pkg_hash);
 
     int len = strlen(json_request);
@@ -498,7 +499,7 @@ int start_sideload(const char *sideload_file) {
     while (1)
     {
         pkt.cmd = 0;
-        recv_packet(&pkt, dummy_data, &dummy_data_size);
+        recv_packet(&pkt, dummy_data, &dummy_data_size, sizeof(dummy_data));
         if(pkt.cmd == ADB_OKAY) send_command(ADB_OKAY, pkt.arg1, pkt.arg0, NULL, 0);
         if(pkt.cmd != ADB_WRTE) continue;
 
@@ -639,11 +640,11 @@ int main(int argc, char** argv) {
 
         if(format_data) {
             printf("Formatting device\n");
-            send_recovery_commands("format-data:", buf);
+            send_recovery_commands("format-data:", buf, sizeof(buf));
             printf("Device formatted successfully\n");
         }
 
-        send_recovery_commands("reboot:", buf);
+        send_recovery_commands("reboot:", buf, sizeof(buf));
     }
 
     /*free(codename);
