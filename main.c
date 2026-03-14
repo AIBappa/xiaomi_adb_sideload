@@ -4,7 +4,7 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <libusb.h>
-//#include <curl/curl.h>
+#include <curl/curl.h>
 #include <AES/aes.h>
 #include <JSON/tiny-json.h>
 #include <BASE64/base64.h>
@@ -427,7 +427,7 @@ int generate_firmware_sign(char* signfile) {
 
     char* pkg_hash = generate_md5_hash(signfile);
     memset(json_request, 0, 1024);
-    snprintf(json_request, sizeof(json_request), "{\n\t\"d\" : \"%s\",\n\t\"v\" : \"%s\",\n\t\"c\" : \"%s\",\n\t\"b\" : \"%s\",\n\t\"sn\" : \"%s\",\n\t\"r\" : \"GL\",\n\t\"l\" : \"en-US\",\n\t\"f\" : \"1\",\n\t\"id\" : \"\",\n\t\"options\" : {\n\t\t\"zone\" : %s\n\t},\n\t\"pkg\" : \"%s\"\n}", codename, version, codebase, branch, serial_num, romzone, pkg_hash);
+    sprintf(json_request, "{\n\t\"d\" : \"%s\",\n\t\"v\" : \"%s\",\n\t\"c\" : \"%s\",\n\t\"b\" : \"%s\",\n\t\"sn\" : \"%s\",\n\t\"r\" : \"GL\",\n\t\"l\" : \"en-US\",\n\t\"f\" : \"1\",\n\t\"id\" : \"\",\n\t\"options\" : {\n\t\t\"zone\" : %s\n\t},\n\t\"pkg\" : \"%s\"\n}", codename, version, codebase, branch, serial_num, romzone, pkg_hash);
     free(pkg_hash);
 
     int len = strlen(json_request);
@@ -448,17 +448,81 @@ int generate_firmware_sign(char* signfile) {
     memset(out_buf, 0, b64_len);
     b64_encode((uint8_t *)json_request, len, (uint8_t *)out_buf);
 
-    // Create a dummy validate.key to bypass OTA server check
-    FILE* fp = fopen("validate.key", "w");
-    if (fp == NULL) {
-        printf("Failed to create validate.key\n");
-        return 1;
-    }
-    // An empty file should be enough to pass the check.
-    fclose(fp);
+    curl_global_init(CURL_GLOBAL_ALL);
+    CURL* curl = curl_easy_init();
 
-    printf("Sign file generated successfully (Xiaomi OTA server check bypassed)\n");
-    return 0;
+    struct curl_slist* headers = NULL;
+    headers = curl_slist_append(headers, "clientId: MITUNES");
+    headers = curl_slist_append(headers, "Connection: Keep-Alive");
+    headers = curl_slist_append(headers, "Accept-Encoding: identity");
+    headers = curl_slist_append(headers, "Content-Type: application/x-www-form-urlencoded");
+
+    char *post_buf = malloc(4096);
+    char *json_post_data = curl_easy_escape(curl, out_buf, strlen(out_buf));
+    sprintf(post_buf, "q=%s&t=&s=1", json_post_data);
+    get_request req = {.buffer = NULL, .len = 0, .buflen = 0};
+
+    curl_easy_setopt(curl, CURLOPT_URL, "http://update.miui.com/updates/miotaV3.php");
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, "MiTunes_UserAgent_v3.0");
+    curl_easy_setopt(curl, CURLOPT_POST, 1);
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, post_buf);
+    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+
+    req.buffer = malloc(CHUNK_SIZE);
+    req.buflen = CHUNK_SIZE;
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&req);
+
+    curl_easy_perform(curl);
+    
+    int result = 1;
+    long status_code;
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &status_code);
+    if (status_code == 200) {
+        curl_free(json_post_data);
+        json_post_data = curl_easy_unescape(curl, req.buffer, req.len, &len);
+        
+        memset(post_buf, 0, 4096);
+        b64_len = b64_decode((uint8_t *)json_post_data, len,(uint8_t*)post_buf);
+        AES_init_ctx_iv(&ctx, key, iv);
+        AES_CBC_decrypt_buffer(&ctx, (uint8_t *)post_buf, b64_len);
+
+        // unpad
+        post_buf[b64_len - post_buf[b64_len - 1]] = 0;
+
+        json_t mem[64];
+        json_t const* json = json_create(post_buf, mem, sizeof mem / sizeof *mem);
+        if(!json) {
+            printf("Failed to parse json\n");
+            goto out;
+        } 
+
+        json_t const* pkgRom = json_getProperty(json, "PkgRom");
+        if(!pkgRom) {
+            printf("Failed to get firmware validate\n");
+            goto out;
+        }
+
+        char const* validate = json_getPropertyValue(pkgRom, "Validate");
+        if(!validate) {
+            printf("Failed to get validate\n");
+            goto out;
+        }
+        result = 0;
+        printf("Sign generated successfully\n");
+        printf("SERVER TOKEN RECEIVED: %s\n", validate);
+        FILE* fp = fopen("validate.key", "w");
+        fwrite(validate, 1, strlen(validate), fp);
+        fclose(fp);
+        printf("Validation file save to : validate.key\n");
+    }
+out:
+    curl_free(json_post_data);
+    free(post_buf);
+    curl_easy_cleanup(curl);
+    curl_slist_free_all(headers);
+    free(req.buffer);
+    return result;
 }
 
 int start_sideload(const char *sideload_file) {
@@ -607,7 +671,8 @@ int main(int argc, char** argv) {
     romzone = (char *)calloc(1, 64);
 
     bool connection = true;
-    if(connect_device_read_info(false)) {
+    bool readinfo = (sideloadfile == NULL);
+    if(connect_device_read_info(readinfo)) {
         printf("Failed to connect with device\n");
         connection = false;
     }
